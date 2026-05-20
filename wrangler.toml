@@ -1,0 +1,5 @@
+name = "atlas-hugo-oise"
+compatibility_date = "2024-05-19"
+
+[assets]
+directory = "dist"

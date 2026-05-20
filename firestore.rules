@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // helpers
+    function isSignedIn() { return request.auth != null; }
+    function existing() { return resource.data; }
+    function incoming() { return request.resource.data; }
+    
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['email', 'role', 'cantons', 'createdAt'])
+        && data.keys().size() == 4
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 256
+        && data.role in ['elu', 'admin']
+        && data.cantons is list && data.cantons.size() <= 100
+        && (data.cantons.size() == 0 || data.cantons[0] is string);
+    }
+
+    match /users/{userId} {
+      // The user can read their own profile.
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      
+      // Allow users to create their own record on first login
+      allow create: if isSignedIn() 
+                    && request.auth.uid == userId
+                    && isValidUser(incoming())
+                    && incoming().role == 'elu'
+                    && incoming().createdAt == request.time;
+                    
+      // No updates allowed by average users - admin assigns cantons directly via Firebase console
+      allow update, delete: if false; 
+    }
+  }
+}

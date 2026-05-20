@@ -1,0 +1,22 @@
+
+<!-- inputs file -->
+<input type="file" id="zipInput" accept=".zip,application/zip,application/x-zip-compressed" style="display:none" onchange="handleZipImport(event)">
+<input type="file" id="municipalesInput" accept=".csv,.txt" style="display:none" onchange="handleMunicipalesImport(event)">
+<input type="file" id="fileInput"   accept=".csv,.txt,text/csv,text/plain,*/*" style="display:none" onchange="handleFileImport(event)">
+<input type="file" id="polFileInput" accept=".xlsx,.xls,.csv,.txt,*/*"         style="display:none" onchange="handlePolImport(event)">
+<input type="file" id="elecT1Input"  accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,1)">
+<input type="file" id="elecT2Input"  accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,2)">
+<input type="file" id="elec15T1Input"  accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,1,'elec15')">
+<input type="file" id="elec15T2Input"  accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,2,'elec15')">
+<input type="file" id="legis24T1Input" accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,1,'legis24')">
+<input type="file" id="legis24T2Input" accept=".xlsx,.xls,.csv,*/*"              style="display:none" onchange="handleElecImport(event,2,'legis24')">
+<input type="file" id="passPermisInput" accept=".csv,*/*"              style="display:none" onchange="handlePassPermisImport(event)">
+<input type="file" id="passAvenirInput" accept=".csv,*/*"              style="display:none" onchange="handlePassAvenirImport(event)">
+
+<!-- PAGE CANTON -->
+<div class="mob-page" id="mobPageCanton">
+  <div class="mob-pg-back-row"><button class="mob-pg-back" onclick="mobGoHome()">📇 Menu principal</button></div>
+  <div class="mob-pg-search"><input id="cantonSearchInput" type="text" placeholder="🔍 Rechercher un canton ou commune…" oninput="renderMobCanton(this.value)" autocomplete="off" autocorrect="off" spellcheck="false"></div>
+  <div class="mob-pg-body" id="mobCantonList"></div>
+</div>
+

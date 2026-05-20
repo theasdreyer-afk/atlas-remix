@@ -1,0 +1,25 @@
+<script>
+// ═══ Sidebar PC : hauteur dynamique au scroll ═══
+(function() {
+  if (window.innerWidth <= 768) return;
+  const sidebar = document.querySelector('.sidebar');
+  const header  = document.querySelector('header');
+  const statsBar = document.querySelector('.stats-bar');
+  if (!sidebar || !header) return;
+
+  function updateSidebarHeight() {
+    if (window.innerWidth <= 768) return;
+    // Le header est sticky → son bottom est toujours >= 0 quand visible
+    const hdrBottom  = header.getBoundingClientRect().bottom;
+    const sbBottom   = statsBar ? statsBar.getBoundingClientRect().bottom : hdrBottom;
+    // On prend le max entre le bas du header sticky et le bas de la stats-bar
+    const visibleTop = Math.max(hdrBottom, sbBottom);
+    sidebar.style.top    = visibleTop + 'px';
+    sidebar.style.height = (window.innerHeight - visibleTop) + 'px';
+  }
+
+  window.addEventListener('scroll', updateSidebarHeight, { passive: true });
+  window.addEventListener('resize', updateSidebarHeight, { passive: true });
+  updateSidebarHeight();
+})();
+</script>

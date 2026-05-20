@@ -1,0 +1,60 @@
+
+<script>
+// ═══════════════════════════════════════════════════
+// CALQUE COMMUNAUTÉS DE COMMUNES (EPCI) — Oise 60
+// ═══════════════════════════════════════════════════
+window.epciOverlayLayers = [];
+window.epciGeoJSONCache = null;
+
+window._clearEpciOverlay = function() {
+  var map = (typeof mapInstance !== 'undefined' && mapInstance) ? mapInstance
+           : (typeof mobMapObj !== 'undefined' && mobMapObj) ? mobMapObj : null;
+  window.epciOverlayLayers.forEach(function(l){
+    try { if (map) map.removeLayer(l); } catch(e) {}
+  });
+  window.epciOverlayLayers = [];
+  if (typeof _overlayLayers !== 'undefined') _overlayLayers['epci'] = null;
+};
+
+window._renderEpciOverlay = function(gj, map) {
+  if (!map) return;
+  window._clearEpciOverlay();
+  var isDark = true;
+  if(typeof document !== 'undefined' && document.documentElement) {
+    isDark = document.documentElement.dataset.theme === 'dark';
+  }
+  var strokeCol = window._calqueColors.epci;
+  gj.features.forEach(function(feature) {
+    var name = feature.properties.nom || feature.properties.name || feature.properties.code || '?';
+    var lyr = L.geoJSON(feature, {
+      style: { color: strokeCol, weight: 2.5, fill: false, dashArray: null, opacity: 0.85 }
+    });
+    lyr.bindTooltip('<strong>' + name + '</strong>', { sticky: true, className: 'epci-tip' });
+    lyr.addTo(map);
+    window.epciOverlayLayers.push(lyr);
+    lyr.bringToFront();
+  });
+  if (typeof _overlayLayers !== 'undefined') {
+    _overlayLayers['epci'] = { _epciPlaceholder: true };
+  }
+};
+
+window._drawEpciOverlay = function(map) {
+  if (!map) return;
+  if (window.epciGeoJSONCache) {
+    window._renderEpciOverlay(window.epciGeoJSONCache, map);
+    return;
+  }
+  if (typeof CACHE_EPCI_GEO !== 'undefined') {
+    window.epciGeoJSONCache = CACHE_EPCI_GEO;
+    if (typeof _overlayActive !== 'undefined' && _overlayActive['epci']) {
+      window._renderEpciOverlay(CACHE_EPCI_GEO, map);
+    }
+  } else {
+    console.warn('Contours EPCI indisponibles');
+  }
+};
+</script>
+
+
+

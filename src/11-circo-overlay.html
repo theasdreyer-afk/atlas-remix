@@ -1,0 +1,42 @@
+<script>
+window.circoOverlayLayers = [];
+window.circoOverlayActive = false;
+window.circoGeoJSONCache = null;
+
+window.clearCircoOverlay = function() {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  window.circoOverlayLayers.forEach(function(l){try{if(_m)_m.removeLayer(l);}catch(e){}});
+  window.circoOverlayLayers = [];
+};
+
+window._renderCircoOverlay = function(gj) {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  if (!_m) return;
+  window.clearCircoOverlay();
+  gj.features.forEach(function(feature) {
+    var name = feature.properties.nomCirconscription || feature.properties.codeCirconscription || '';
+    var lyr = L.geoJSON(feature, {
+      style: {color:window._calqueColors.circo, weight:4, fill:false, opacity:1}
+    });
+    lyr.bindTooltip('<strong>Circonscription de ' + name + '</strong>', {sticky:true, className:'epci-tip'});
+    lyr.addTo(_m);
+    window.circoOverlayLayers.push(lyr);
+    lyr.bringToFront();
+  });
+};
+
+window.drawCircoOverlay = function() {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  if (!_m) return;
+  if (window.circoGeoJSONCache) {
+    window._renderCircoOverlay(window.circoGeoJSONCache);
+    return;
+  }
+  if (typeof CACHE_CIRCO_GEO !== 'undefined') {
+    window.circoGeoJSONCache = CACHE_CIRCO_GEO;
+    if (window.circoOverlayActive) window._renderCircoOverlay(CACHE_CIRCO_GEO);
+  } else {
+    console.warn('Contours circonscriptions indisponibles');
+  }
+};
+</script>

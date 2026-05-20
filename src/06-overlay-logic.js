@@ -1,0 +1,597 @@
+
+window.OverlayTab = (function() {
+  let map = null;
+  let leftPane, rightPane, overlayPane; 
+  let leftLayer, rightLayer, secondLayer, primLayer, bivariateLayer;
+  let legendLeft, legendRight, legendOverlay, legendBiv;
+  let activeBivFilter = null;
+  
+  const bivariateColors = [
+    ["#e8e8e8", "#ace4e4", "#5ac8c8"],  // B faible
+    ["#dfb0d6", "#a5add3", "#5698b9"],  // B moyen
+    ["#be64ac", "#8c62aa", "#3b4994"]   // B élevé
+  ];
+  
+  // Variables de démonstration, à adapter aux propriétés GeoJSON réelles
+  let availableVars = [];
+  let currentOverlayMode = 'split';
+
+  function initOverlayTab() {
+    if (map) {
+      if (document.getElementById('tabOverlay').style.display === 'none') return;
+      map.invalidateSize();
+      return;
+    }
+    
+    // Init selects
+    if (window.MAP_LAYER_DEFS) {
+      availableVars = [];
+      Object.keys(window.MAP_LAYER_DEFS).forEach(k => {
+        let def = window.MAP_LAYER_DEFS[k];
+        let type = (k === 'pop' || k === 'dens' || k === 'canton' || def.lbl.includes('Vainqueur')) ? 'abs' : 'pct';
+        availableVars.push({ id: k, name: def.lbl, type: type });
+      });
+    }
+
+    const selectHtml = availableVars.map(v => `<option value="${v.id}">${v.name}</option>`).join('');
+    document.querySelectorAll('.overlay-var-select').forEach(el => {
+      el.innerHTML = '<option value="">-- Choisir une variable --</option>' + selectHtml;
+    });
+    // Valeurs par défaut
+    document.getElementById('splitLeftVar').value = availableVars[0].id;
+    document.getElementById('splitRightVar').value = availableVars[1].id;
+    document.getElementById('overlayPrimVar').value = availableVars[0].id;
+    document.getElementById('overlaySecVar').value = availableVars[1].id;
+    document.getElementById('bivVarA').value = availableVars[0].id;
+    document.getElementById('bivVarB').value = availableVars[1].id;
+    
+    generateHatchPatterns();
+
+    // Init Map
+    map = L.map('overlayMap', { zoomControl: false }).setView([49.4, 2.3], 9);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 18,
+      attribution: '&copy; CartoDB'
+    }).addTo(map);
+    
+    leftPane = map.createPane('leftPane');
+    rightPane = map.createPane('rightPane');
+    overlayPane = map.createPane('customOverlayPane');
+    
+    leftPane.style.zIndex = 401;
+    rightPane.style.zIndex = 402;
+    overlayPane.style.zIndex = 403;
+    
+    legendLeft = L.control({position: 'bottomleft'});
+    legendLeft.onAdd = function() { return L.DomUtil.create('div', 'overlay-legend legend-left'); };
+    legendRight = L.control({position: 'bottomright'});
+    legendRight.onAdd = function() { return L.DomUtil.create('div', 'overlay-legend legend-right'); };
+    
+    legendOverlay = L.control({position: 'bottomleft'});
+    legendOverlay.onAdd = function() { return L.DomUtil.create('div', 'overlay-legend legend-overlay'); };
+
+    legendBiv = L.control({position: 'bottomleft'});
+    legendBiv.onAdd = function() { return L.DomUtil.create('div', 'overlay-legend legend-biv'); };
+
+    setupSplitter();
+    switchMode();
+  }
+  
+  function generateHatchPatterns() {
+    const defs = document.getElementById('overlaySvgDefs');
+    if(!defs) return;
+    const configs = [{d: 36, w: 1, n: '0'}, {d: 24, w: 1.5, n: '1'}, {d: 14, w: 2, n: '2'}, {d: 8, w: 2.5, n: '3'}, {d: 4, w: 3, n: '4'}];
+    let html = '';
+    configs.forEach((c) => {
+      html += `
+        <pattern id="hatch-${c.n}" width="${c.d}" height="${c.d}" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="0" x2="0" y2="${c.d}" stroke="#ffffff" stroke-width="${c.w}" />
+        </pattern>
+      `;
+    });
+    defs.innerHTML = html;
+  }
+  
+  function getHatchUrl(value, min, max) {
+    if (!value || isNaN(value)) return 'none';
+    const classesCount = 5;
+    let pct = (max - min) === 0 ? 0 : (value - min) / (max - min);
+    pct = Math.max(0, Math.min(1, pct));
+    let idx = Math.floor(pct * classesCount);
+    if(idx >= classesCount) idx = classesCount - 1;
+    return `url(#hatch-${idx})`;
+  }
+  
+  
+  function setupSplitter() {
+    const splitter = document.getElementById('overlaySplitter');
+    const mapContainer = document.getElementById('overlayMap');
+    let isDragging = false;
+    
+    const onMove = (clientX) => {
+      if (!isDragging) return;
+      const rect = mapContainer.getBoundingClientRect();
+      let pct = (clientX - rect.left) / rect.width;
+      pct = Math.max(0, Math.min(1, pct));
+      setSplitPosition(pct);
+    };
+
+    splitter.addEventListener('mousedown', () => { isDragging = true; map.dragging.disable(); });
+    document.addEventListener('mouseup', () => { isDragging = false; map.dragging.enable(); });
+    document.addEventListener('mousemove', (e) => onMove(e.clientX));
+
+    splitter.addEventListener('touchstart', (e) => { isDragging = true; map.dragging.disable(); }, {passive:false});
+    document.addEventListener('touchend', () => { isDragging = false; map.dragging.enable(); });
+    document.addEventListener('touchmove', (e) => onMove(e.touches[0].clientX), {passive:false});
+    
+    map.on('move', () => {
+      if(document.getElementById('overlayModeSelect').value === 'split') {
+        const rect = mapContainer.getBoundingClientRect();
+        const splitRect = splitter.getBoundingClientRect();
+        const pct = (splitRect.left + splitRect.width/2 - rect.left) / rect.width;
+        setSplitPosition(pct);
+      }
+    });
+  }
+  
+  function setSplitPosition(pct) {
+    const splitter = document.getElementById('overlaySplitter');
+    const mapContainer = document.getElementById('overlayMap');
+    splitter.style.left = (pct * 100) + '%';
+    
+    if (leftPane && rightPane && map) {
+       const nw = map.containerPointToLayerPoint([0, 0]);
+       const se = map.containerPointToLayerPoint(map.getSize());
+       const clipX = nw.x + (map.getSize().x * pct);
+       
+       leftPane.style.clip = `rect(${nw.y}px, ${clipX}px, ${se.y}px, ${nw.x}px)`;
+       rightPane.style.clip = `rect(${nw.y}px, ${se.x}px, ${se.y}px, ${clipX}px)`;
+    }
+  }
+
+  function switchMode() {
+    const mode = document.getElementById('overlayModeSelect').value;
+    const splitControls = document.getElementById('overlaySplitControls');
+    
+    let var1, var2;
+    if (currentOverlayMode === 'split') {
+        var1 = document.getElementById('splitLeftVar').value;
+        var2 = document.getElementById('splitRightVar').value;
+    } else if (currentOverlayMode === 'overlay') {
+        var1 = document.getElementById('overlayPrimVar').value;
+        var2 = document.getElementById('overlaySecVar').value;
+    } else if (currentOverlayMode === 'bivariate') {
+        var1 = document.getElementById('bivVarA').value;
+        var2 = document.getElementById('bivVarB').value;
+    }
+    if (mode === 'split') {
+        document.getElementById('splitLeftVar').value = var1;
+        document.getElementById('splitRightVar').value = var2;
+    } else if (mode === 'overlay') {
+        document.getElementById('overlayPrimVar').value = var1;
+        document.getElementById('overlaySecVar').value = var2;
+    } else if (mode === 'bivariate') {
+        document.getElementById('bivVarA').value = var1;
+        document.getElementById('bivVarB').value = var2;
+    }
+    currentOverlayMode = mode;
+
+    const opacControls = document.getElementById('overlayOpacityControls');
+    const bivControls = document.getElementById('overlayBivariateControls');
+    const splitter = document.getElementById('overlaySplitter');
+    
+    if(leftLayer) map.removeLayer(leftLayer);
+    if(rightLayer) map.removeLayer(rightLayer);
+    if(primLayer) map.removeLayer(primLayer);
+    if(secondLayer) map.removeLayer(secondLayer);
+    if(bivariateLayer) map.removeLayer(bivariateLayer);
+    
+    legendLeft.remove(); legendRight.remove(); legendOverlay.remove(); legendBiv.remove();
+    
+    if (mode === 'split') {
+      splitControls.style.display = 'flex';
+      opacControls.style.display = 'none';
+      bivControls.style.display = 'none';
+      splitter.style.display = 'block';
+      leftPane.style.display = 'block';
+      rightPane.style.display = 'block';
+      overlayPane.style.display = 'none';
+      
+      const width = document.getElementById('overlayMap').getBoundingClientRect().width;
+      const splitLeft = splitter.offsetLeft;
+      setSplitPosition((splitLeft||width/2) / width);
+      updateLayers();
+    } else if (mode === 'overlay') {
+      splitControls.style.display = 'none';
+      opacControls.style.display = 'flex';
+      bivControls.style.display = 'none';
+      splitter.style.display = 'none';
+      leftPane.style.display = 'block';
+      rightPane.style.display = 'none';
+      overlayPane.style.display = 'block';
+      leftPane.style.clip = 'auto';
+      rightPane.style.clip = 'auto';
+      updateLayers();
+    } else if (mode === 'bivariate') {
+      splitControls.style.display = 'none';
+      opacControls.style.display = 'none';
+      bivControls.style.display = 'flex';
+      splitter.style.display = 'none';
+      leftPane.style.display = 'block';
+      rightPane.style.display = 'none';
+      overlayPane.style.display = 'block'; 
+      leftPane.style.clip = 'auto';
+      rightPane.style.clip = 'auto';
+      updateLayers();
+    }
+    map.invalidateSize();
+  }
+
+  function getMinMax(varId) {
+    if(!varId) return {min:0, max:1};
+    let min=Infinity, max=-Infinity;
+    (window.allCommunes || []).forEach(c => {
+      let val = (typeof window.getValueForMode === 'function') ? window.getValueForMode(c.code, varId) : c[varId];
+      if(val !== null && val !== undefined && !isNaN(val)) {
+        if(val < min) min = val;
+        if(val > max) max = val;
+      }
+    });
+    if(min===Infinity) { min=0; max=100; }
+    return { min, max };
+  }
+  
+  function buildLegendHtml(title, min, max, scaleColors, suffix) {
+    let scaleStr = chroma.scale(scaleColors).colors(5);
+    let grad = 'linear-gradient(to right, ' + scaleStr.join(', ') + ')';
+    return `
+      <div style="font-weight:bold; margin-bottom:5px;">${title}</div>
+      <div style="height:10px; border-radius:4px; background:${grad}; margin-bottom:2px;"></div>
+      <div style="display:flex; justify-content:space-between; font-size:10px; opacity:0.8;">
+        <span>${min.toFixed(0)}${suffix}</span>
+        <span>${max.toFixed(0)}${suffix}</span>
+      </div>
+    `;
+  }
+  
+  function updateOpacity() {
+    const val = document.getElementById('overlayOpacityRange').value;
+    document.getElementById('overlayOpacVal').innerText = Math.round(val * 100);
+    if(secondLayer) {
+      secondLayer.setStyle({ fillOpacity: val });
+    }
+  }
+
+  function getFeatureValue(f, varId) {
+     if (typeof window.getValueForMode === 'function') {
+        let v = window.getValueForMode(f.properties.code, varId);
+        if (v !== undefined && v !== null) return v;
+     }
+     let fallback = f.properties[varId];
+     if (fallback === undefined && varId === 'canton') fallback = f.properties.nomCanton;
+     if (fallback === undefined && varId.includes('winner')) {
+        let tour = varId.endsWith('t1') ? 1 : 2;
+        let isLegis = varId.includes('legis');
+        let is15 = varId.includes('15');
+        let src;
+        if (isLegis) src = tour===1 ? window.LEGIS2024T1 : window.LEGIS2024T2;
+        else src = tour===1 ? (is15 ? window.elec15DataT1 : window.elecDataT1) : (is15 ? window.elec15DataT2 : window.elecDataT2);
+        if (src && src[f.properties.code]) fallback = src[f.properties.code].n1;
+     }
+     return fallback !== undefined ? fallback : null;
+  }
+
+  function updateLayers() {
+    const mode = document.getElementById('overlayModeSelect').value;
+    if(leftLayer) map.removeLayer(leftLayer);
+    if(rightLayer) map.removeLayer(rightLayer);
+    if(primLayer) map.removeLayer(primLayer);
+    if(secondLayer) map.removeLayer(secondLayer);
+    legendLeft.remove(); legendRight.remove(); legendOverlay.remove();
+    
+    if (!window.allCommunes) return;
+
+    // Build fresh features to ensure safe memory access
+    const features = window.allCommunes.filter(c => c.contour).map(c => {
+      return {
+        type: 'Feature',
+        geometry: c.contour,
+        properties: { ...c }
+      };
+    });
+    
+    let leftRenderer = L.svg({ pane: 'leftPane' });
+    let rightRenderer = L.svg({ pane: 'rightPane' });
+    let customOverlayRenderer = L.svg({ pane: 'customOverlayPane' });
+    
+    if (mode === 'split') {
+      const varL = document.getElementById('splitLeftVar').value;
+      const varR = document.getElementById('splitRightVar').value;
+      
+      const confL = availableVars.find(v=>v.id===varL) || null;
+      const confR = availableVars.find(v=>v.id===varR) || null;
+      
+      if(confL) {
+        let minmax = {min: 0, max: 1};
+        leftLayer = L.geoJSON(features, {
+          renderer: leftRenderer,
+          pane: 'leftPane',
+          style: (f) => {
+            const s = window.getMarkerStyle(f.properties, varL);
+            return {
+              fillColor: s.fill,
+              weight: 1, color: 'rgba(255,255,255,0.2)', fillOpacity: 0.8
+            };
+          },
+          onEachFeature: (f, l) => bindHover(f, l, varL, varR)
+        }).addTo(map);
+        
+        legendLeft.addTo(map);
+        document.querySelector('#overlayMap .legend-left').innerHTML = `<div id="overlayLegL" style="background:rgba(30,30,42,0.9);padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1)"></div>`;
+        if(window.updateMapLegend) window.updateMapLegend(varL, 'overlayLegL');
+      }
+      
+      if(confR) {
+        rightLayer = L.geoJSON(features, {
+          renderer: rightRenderer,
+          pane: 'rightPane',
+          style: (f) => {
+            const s = window.getMarkerStyle(f.properties, varR);
+            return {
+              fillColor: s.fill,
+              weight: 1, color: 'rgba(255,255,255,0.2)', fillOpacity: 0.8
+            };
+          },
+          onEachFeature: (f, l) => bindHover(f, l, varL, varR)
+        }).addTo(map);
+        
+        legendRight.addTo(map);
+        document.querySelector('#overlayMap .legend-right').innerHTML = `<div id="overlayLegR" style="background:rgba(30,30,42,0.9);padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1)"></div>`;
+        if(window.updateMapLegend) window.updateMapLegend(varR, 'overlayLegR');
+      }
+      
+    } else if (mode === 'overlay') {
+      const varP = document.getElementById('overlayPrimVar').value;
+      const varS = document.getElementById('overlaySecVar').value;
+      const confP = availableVars.find(v=>v.id===varP) || null;
+      const confS = availableVars.find(v=>v.id===varS) || null;
+      const opac = parseFloat(document.getElementById('overlayOpacityRange').value);
+      
+      let legHtml = '';
+      
+      if(confP) {
+        primLayer = L.geoJSON(features, {
+          renderer: leftRenderer,
+          pane: 'leftPane', 
+          style: (f) => {
+            const s = window.getMarkerStyle(f.properties, varP);
+            return {
+              fillColor: s.fill,
+              weight: 1, color: 'rgba(255,255,255,0.2)', fillOpacity: 0.8
+            };
+          },
+          onEachFeature: (f, l) => bindHover(f, l, varP, varS)
+        }).addTo(map);
+        legHtml += `<div id="overlayLegP" style="background:rgba(30,30,42,0.9);padding:10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1)"></div>`;
+        setTimeout(() => { if(window.updateMapLegend) window.updateMapLegend(varP, 'overlayLegP'); }, 10);
+      }
+      
+      if(confS) {
+        const stats = getMinMax(varS);
+        secondLayer = L.geoJSON(features, {
+          renderer: customOverlayRenderer,
+          pane: 'customOverlayPane',
+          style: (f) => {
+            const v = getFeatureValue(f, varS);
+            return {
+              fillColor: getHatchUrl(v, stats.min, stats.max),
+              weight: 0, color: 'transparent', fillOpacity: opac
+            };
+          },
+          interactive: false
+        }).addTo(map);
+        legHtml += `<div style="margin-top:10px; font-weight:bold;">Hachures: ${confS.name}</div>
+          <div style="font-size:10px; opacity:0.8;">Densité: de ${stats.min.toFixed(0)} à ${stats.max.toFixed(0)}</div>`;
+      }
+      if(legHtml) {
+        legendOverlay.addTo(map);
+        document.querySelector('#overlayMap .legend-overlay').innerHTML = legHtml;
+      }
+    } else if (mode === 'bivariate') {
+      const varA = document.getElementById('bivVarA').value;
+      const varB = document.getElementById('bivVarB').value;
+      const confA = availableVars.find(v=>v.id===varA) || null;
+      const confB = availableVars.find(v=>v.id===varB) || null;
+      
+      if(confA && confB) {
+        let valsA = [], valsB = [];
+        features.forEach(f => {
+           let vA = getFeatureValue(f, varA), vB = getFeatureValue(f, varB);
+           if(typeof vA === 'number' && !isNaN(vA)) valsA.push(vA);
+           if(typeof vB === 'number' && !isNaN(vB)) valsB.push(vB);
+        });
+        
+        let limitsA = valsA.length > 2 ? window.chroma.limits(valsA, 'q', 3) : [0, 33, 66, 100];
+        let limitsB = valsB.length > 2 ? window.chroma.limits(valsB, 'q', 3) : [0, 33, 66, 100];
+        
+        const getClassIdx = (val, limits) => {
+          if (val === null || val === undefined || isNaN(val)) return -1;
+          if (val <= limits[1]) return 0;
+          if (val <= limits[2]) return 1;
+          return 2;
+        };
+
+        const classifyBivariate = (f) => {
+           let vA = getFeatureValue(f, varA), vB = getFeatureValue(f, varB);
+           let cA = getClassIdx(vA, limitsA);
+           let cB = getClassIdx(vB, limitsB);
+           if (cA > 2) cA = 2;
+           if (cB > 2) cB = 2;
+           return { cA, cB, valid: cA >= 0 && cB >= 0 };
+        };
+
+        bivariateLayer = L.geoJSON(features, {
+          renderer: leftRenderer,
+          pane: 'leftPane',
+          style: (f) => {
+            let res = classifyBivariate(f);
+            let highlight = true;
+            if (activeBivFilter) {
+               const [fA, fB] = activeBivFilter.split('-');
+               if (res.cA != fA || res.cB != fB) highlight = false;
+            }
+            return {
+              fillColor: res.valid ? bivariateColors[res.cB][res.cA] : 'transparent',
+              fillOpacity: res.valid ? (highlight ? 0.8 : 0.1) : 0,
+              weight: 1, 
+              color: res.valid ? (highlight ? '#fff' : 'rgba(255,255,255,0.1)') : 'transparent'
+            };
+          },
+          onEachFeature: (f, l) => {
+            l.on('mouseover', () => {
+               let res = classifyBivariate(f);
+               let props = f.properties;
+               let html = `<div style="font-weight:bold; color:var(--gold); margin-bottom:5px;">${props.nom || props.code}</div>`;
+               if(res.valid) {
+                 const classNames = ['Faible', 'Moyenne', 'Élevée'];
+                 let vA = getFeatureValue(f, varA);
+                 let vB = getFeatureValue(f, varB);
+                 const fmt = (v) => {
+                   if(v===null||v===undefined||isNaN(v))return 'N/A';
+                   return v%1===0 ? v : v.toFixed(2);
+                 };
+                 html += `<div style="margin-bottom:2px">${confA.name}: <span style="color:#fff">${fmt(vA)}${confA.type==='pct'?'%':''}</span> (${classNames[res.cA]})</div>`;
+                 html += `<div>${confB.name}: <span style="color:#fff">${fmt(vB)}${confB.type==='pct'?'%':''}</span> (${classNames[res.cB]})</div>`;
+               }
+               l.bindTooltip(html, {className: 'overlay-tooltip', sticky: true}).openTooltip();
+               l.setStyle({ weight: 2, fillOpacity: 0.9, color: '#fff' });
+               l.bringToFront();
+            });
+            l.on('mouseout', () => {
+               let highlight = true;
+               let res = classifyBivariate(f);
+               if (activeBivFilter) {
+                 const [fA, fB] = activeBivFilter.split('-');
+                 if (res.cA != fA || res.cB != fB) highlight = false;
+               }
+               l.setStyle({ fillOpacity: res.valid ? (highlight ? 0.8 : 0.1) : 0, weight: 1, color: res.valid ? (highlight ? '#fff' : 'rgba(255,255,255,0.1)') : 'transparent' });
+            });
+          }
+        }).addTo(map);
+
+        legendBiv.addTo(map);
+        let legendContainer = document.querySelector('#overlayMap .legend-biv');
+        let legendHtml = `
+          <div style="font-weight:bold; text-align:center; color:var(--gold); margin-bottom: 5px; font-size:12px;">LÉGENDE BIVARIÉE</div>
+          <div style="font-size: 10px; margin-bottom: 8px; color:rgba(255,255,255,0.7); text-align:center;">${confB.name} (axe &uarr;)</div>
+          <div style="display:flex; justify-content:center; align-items:center;">
+             <div style="writing-mode: vertical-rl; transform: rotate(180deg); margin-right: 5px; height: 102px; text-align:center; font-size:10px; display:flex; justify-content:space-between; color:rgba(255,255,255,0.7);">
+                <span>Élevée</span><span>Moyenne</span><span>Faible</span>
+             </div>
+             <div>
+                 <table style="border-collapse: collapse;">
+        `;
+        for(let r = 2; r >= 0; r--) {
+           legendHtml += '<tr>';
+           for(let c = 0; c <= 2; c++) {
+              let color = bivariateColors[r][c];
+              let filterId = c + '-' + r;
+              let isSelected = activeBivFilter === filterId;
+              let border = isSelected ? '2px solid #fff' : '1px solid rgba(255,255,255,0.2)';
+              legendHtml += `<td data-biv="${filterId}" style="width:34px; height:34px; background:${color}; border:${border}; cursor:pointer;" title="${confA.name}: ${c===0?'Faible':c===1?'Moyenne':'Élevée'} | ${confB.name}: ${r===0?'Faible':r===1?'Moyenne':'Élevée'}"></td>`;
+           }
+           legendHtml += '</tr>';
+        }
+        legendHtml += `
+                 </table>
+                 <div style="display:flex; justify-content:space-between; width:102px; font-size:10px; margin-top:4px; color:rgba(255,255,255,0.7);">
+                    <span>Faible</span><span>Moy</span><span>Élevée</span>
+                 </div>
+             </div>
+          </div>
+          <div style="margin-top:5px; text-align:center; font-size:10px; color:rgba(255,255,255,0.7);">${confA.name} (axe &rarr;)</div>
+          ${activeBivFilter ? `<button id="bivResetBtn" class="tab-btn" style="width:100%; border-radius:4px; padding:6px; font-size:11px; margin-top:8px;">Quitter la sélection</button>` : ''}
+          <button id="bivQuitBtn" class="tab-btn" style="width:100%; border-radius:4px; padding:6px; font-size:11px; margin-top:5px;">Quitter la comparaison</button>
+        `;
+        legendContainer.innerHTML = legendHtml;
+        
+        legendContainer.querySelectorAll('td[data-biv]').forEach(td => {
+           td.addEventListener('click', (e) => {
+              let fId = e.target.getAttribute('data-biv');
+              if (activeBivFilter === fId) {
+                 activeBivFilter = null;
+              } else {
+                 activeBivFilter = fId;
+              }
+              updateLayers();
+           });
+           td.addEventListener('mouseenter', (e) => {
+              if (activeBivFilter) return; 
+              let fId = e.target.getAttribute('data-biv');
+              const [fA, fB] = fId.split('-');
+              bivariateLayer.eachLayer(l => {
+                 let res = classifyBivariate(l.feature);
+                 if (res.cA == fA && res.cB == fB) {
+                    l.setStyle({ fillOpacity: 0.9, weight: 2, color:'#fff' });
+                    l.bringToFront();
+                 } else {
+                    l.setStyle({ fillOpacity: 0.1, weight: 0.5, color: 'rgba(255,255,255,0.1)' });
+                 }
+              });
+           });
+           td.addEventListener('mouseleave', (e) => {
+              if (activeBivFilter) return;
+              bivariateLayer.eachLayer(l => {
+                 l.setStyle({ fillOpacity: 0.8, weight: 1, color: '#fff' });
+              });
+           });
+        });
+        
+        document.getElementById('bivResetBtn')?.addEventListener('click', () => {
+           activeBivFilter = null;
+           updateLayers();
+        });
+        document.getElementById('bivQuitBtn')?.addEventListener('click', () => {
+           activeBivFilter = null;
+           document.getElementById('overlayModeSelect').value = 'split';
+           switchMode();
+        });
+      }
+    }
+  }
+  
+  function bindHover(f, layer, var1, var2) {
+    layer.on('mouseover', (e) => {
+      let props = f.properties;
+      let conf1 = availableVars.find(v=>v.id===var1);
+      let conf2 = availableVars.find(v=>v.id===var2);
+      
+      let html = `<div style="font-weight:bold; color:var(--gold); margin-bottom:5px;">${props.nom || props.code}</div>`;
+      
+      if(conf1) {
+        const v1 = getFeatureValue(f, var1);
+        if (v1 !== null && v1 !== undefined) {
+           let vStr = typeof v1 === 'number' ? v1.toLocaleString('fr-FR', {maximumFractionDigits:1}) + (conf1.type==='pct'?'%':'') : v1;
+           html += `<div>${conf1.name}: ${vStr}</div>`;
+        }
+      }
+      if(conf2 && var2!==var1) {
+        const v2 = getFeatureValue(f, var2);
+        if (v2 !== null && v2 !== undefined) {
+           let vStr = typeof v2 === 'number' ? v2.toLocaleString('fr-FR', {maximumFractionDigits:1}) + (conf2.type==='pct'?'%':'') : v2;
+           html += `<div>${conf2.name}: ${vStr}</div>`;
+        }
+      }
+      
+      layer.bindTooltip(html, {className: 'overlay-tooltip', sticky: true}).openTooltip();
+      layer.setStyle({ weight: 2, color: '#fff' });
+    });
+    layer.on('mouseout', () => {
+      layer.setStyle({ weight: 1, color: 'rgba(255,255,255,0.2)' });
+    });
+  }
+
+  return { initOverlayTab, switchMode, updateLayers, updateOpacity };
+})();

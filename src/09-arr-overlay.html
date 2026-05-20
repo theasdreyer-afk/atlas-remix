@@ -1,0 +1,46 @@
+
+<script>
+window.arrOverlayLayers = [];
+window.arrOverlayActive = false;
+window.arrGeoJSONCache = null;
+window.ARR_NAMES = {'601':'Beauvais','602':'Clermont','603':'Compiegne','604':'Senlis'};
+
+window.clearArrOverlay = function() {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  window.arrOverlayLayers.forEach(function(l){try{if(_m)_m.removeLayer(l);}catch(e){}});
+  window.arrOverlayLayers = [];
+};
+
+window._renderArrOverlay = function(gj) {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  if (!_m) return;
+  window.clearArrOverlay();
+  gj.features.forEach(function(feature) {
+    var geoCode = feature.properties.code;
+    var arrCode = geoCode[0] + geoCode.slice(3);
+    var name = feature.properties.nom || window.ARR_NAMES[arrCode] || arrCode;
+    var lyr = L.geoJSON(feature, {
+      style: {color:window._calqueColors.arr, weight:5, fill:false, opacity:1}
+    });
+    lyr.bindTooltip('<strong>Arrondissement de ' + name + '</strong>', {sticky:true, className:'epci-tip'});
+    lyr.addTo(_m);
+    window.arrOverlayLayers.push(lyr);
+    lyr.bringToFront();
+  });
+};
+
+window.drawArrOverlay = function() {
+  var _m = (typeof mobMapObj!=='undefined'&&mobMapObj)?mobMapObj:(typeof mapInstance!=='undefined'&&mapInstance)?mapInstance:null;
+  if (!_m) return;
+  if (window.arrGeoJSONCache) {
+    window._renderArrOverlay(window.arrGeoJSONCache);
+    return;
+  }
+  if (typeof CACHE_ARR_GEO !== 'undefined') {
+    window.arrGeoJSONCache = CACHE_ARR_GEO;
+    if (window.arrOverlayActive) window._renderArrOverlay(CACHE_ARR_GEO);
+  } else {
+    console.warn('Contours arrondissements indisponibles');
+  }
+};
+</script>

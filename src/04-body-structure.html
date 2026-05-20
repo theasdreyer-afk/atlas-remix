@@ -1,0 +1,503 @@
+<body>
+
+<div id="mapTopBar" style="display:none;position:fixed;top:0;left:0;right:0;z-index:300;background:rgba(13,35,64,.97);backdrop-filter:blur(8px);border-bottom:2px solid var(--gold);padding:8px 12px;align-items:center;gap:10px;box-shadow:0 2px 12px rgba(0,0,0,.3);">
+  <button onclick="toggleOverlayPanel()" style="background:rgba(255,255,255,.1);border:1.5px solid var(--gold);color:var(--gold);border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">🗂 Calques</button>
+  <div style="flex:1;text-align:center;color:#fff;font-size:13px;font-weight:600;opacity:.8;">Atlas · Oise</div>
+  <button onclick="mobGoHome()" style="background:rgba(255,255,255,.1);border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap;">≡ Menu</button>
+</div>
+
+
+<!-- BARRE RECHERCHE MOBILE -->
+<div class="mobile-search-bar" id="mobileSearchBar">
+  <input type="text" id="mobileSearchInput" placeholder="🔍 Rechercher une commune…" oninput="onMobileSearch(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">
+  <button class="mobile-filter-btn" id="mobileFilterBtn" onclick="openDrawer()">⚙️ Filtres</button>
+</div>
+<div class="landscape-block" id="landscapeBlock">
+  <div class="lb-icon">📱</div><strong>Mode portrait uniquement</strong>
+  <p>Tournez votre téléphone en mode portrait.</p>
+</div>
+<div class="mob-spacer" id="mobSpacer" style="height:0"></div>
+
+<div class="mob-frow" id="mobFRow">
+  <button class="mob-fpill" id="fpCirco"  onclick="openSh('circo')">🎪 Circo. <span id="fpCircoC"></span>▾</button>
+  <button class="mob-fpill" id="fpCanton" onclick="openSh('canton')">🗂 Canton <span id="fpCantonC"></span>▾</button>
+  <button class="mob-fpill" id="fpEpci" onclick="openSh('epci')">🏘 CC/CA <span id="fpEpciC"></span>▾</button>
+  <button class="mob-fpill" id="fpDens"   onclick="openSh('dens')">📊 Densité <span id="fpDensC"></span>▾</button>
+  <button class="mob-fpill" id="fpPop"    onclick="openSh('pop')">👥 Pop. <span id="fpPopC"></span>▾</button>
+  <button class="mob-fpill" id="fpSort"   onclick="openSh('sort')">↕ Tri ▾</button>
+</div>
+
+
+  <!-- Bandeau paysage compact -->
+  <div id="landscapeBar" style="display:none;position:absolute;top:0;left:0;right:0;z-index:700;background:rgba(13,35,64,.92);padding:4px 8px;align-items:center;gap:8px;backdrop-filter:blur(6px);">
+    <button onclick="toggleOverlayPanel()" style="background:rgba(255,255,255,.12);border:1px solid var(--gold);color:var(--gold);border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">🗂 Calques</button>
+    <button onclick="closeLandscapeToHome()" style="background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;">≡ Menu principal</button>
+    <div style="flex:1"></div>
+    <span style="color:rgba(255,255,255,.5);font-size:10px;">Atlas · Oise</span>
+  </div>
+
+<button class="mob-fab" id="mobFab" onclick="mobFabClick()">↑</button>
+<div class="sh-ov" id="shOv" onclick="closeSh()"></div>
+<div class="sh-box" id="shBox">
+  <div class="sh-hnd"></div>
+  <div class="sh-head"><div class="sh-ttl" id="shTtl">Filtrer</div><button class="sh-all" id="shAllBtn" onclick="shAll()">Tout</button></div>
+  <input class="sh-srch" id="shSrch" placeholder="Rechercher…" oninput="renderShItems(activeSh,this.value)" style="display:none">
+  <div class="sh-list" id="shList"></div>
+  <div class="sh-foot">
+    <button class="sh-rst" onclick="rstSh()">↺ Effacer</button>
+    <button class="sh-ok" onclick="closeSh()">✓ Appliquer</button>
+  </div>
+</div>
+
+<div class="col-filter-box" id="colFilterBox" style="display:none">
+  <div class="cfb-sorts">
+    <button id="cfbSortAsc" onclick="CFB.sortAsc()">Tri ↑</button>
+    <button id="cfbSortDesc" onclick="CFB.sortDesc()">Tri ↓</button>
+  </div>
+  <input type="text" id="cfbSearch" placeholder="Rechercher…" oninput="CFB.renderList()">
+  <div class="cfb-list" id="cfbList"></div>
+  <div class="cfb-actions">
+    <button onclick="CFB.close()">Annuler</button>
+    <button onclick="CFB.apply()" style="font-weight:bold;color:var(--gold)">OK</button>
+  </div>
+</div>
+<div id="mobImportBand" style="padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;">
+  <button onclick="openImportModal()" style="width:100%;padding:11px;background:var(--navy-mid);border:1.5px solid var(--gold);color:var(--gold);border-radius:8px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">📂 Importer des données (CSV / XLSX / ZIP)</button>
+</div>
+
+
+<div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+<div class="mobile-filter-drawer" id="filterDrawer">
+  <div class="drawer-handle"></div>
+  <div class="drawer-title" style="display:flex;align-items:center;justify-content:space-between"><span>⚙️ Filtres</span><button onclick="document.getElementById('themeToggle').click();" style="background:none;border:1.5px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:5px 12px;font-size:16px;cursor:pointer" id="mobThemeBtn">☀️</button></div>
+  <div class="drawer-section">
+    <label>Circonscription</label>
+    <select id="mobileFilterCirco" onchange="syncFromDrawer()">
+      <option value="">Toutes les circonscriptions</option>
+    </select>
+  </div>
+  <div class="drawer-section">
+    <label>Canton</label>
+    <select id="mobileFilterCanton" onchange="syncFromDrawer()">
+      <option value="">Tous les cantons</option>
+    </select>
+  </div>
+  <div class="drawer-section">
+    <label>Population</label>
+    <select id="mobilePopPreset" onchange="syncFromDrawer()">
+      <option value="">Toutes</option>
+      <option value="0-499">Moins de 500 hab.</option>
+      <option value="500-1999">500 – 1 999 hab.</option>
+      <option value="2000-4999">2 000 – 4 999 hab.</option>
+      <option value="5000-9999">5 000 – 9 999 hab.</option>
+      <option value="10000-999999">10 000 hab. et +</option>
+    </select>
+  </div>
+  <div class="drawer-section">
+    <label>Densité</label>
+    <select id="mobileFilterDensity" onchange="syncFromDrawer()">
+      <option value="">Tous types</option>
+      <option value="urban">Urbain (&gt;1000 hab/km²)</option>
+      <option value="periurban">Péri-urbain (150–1000)</option>
+      <option value="rural">Rural (30–150)</option>
+      <option value="very-rural">Rural isolé (&lt;30)</option>
+    </select>
+  </div>
+  <div class="drawer-section">
+    <label>Trier par</label>
+    <select id="mobileSortField" onchange="syncFromDrawer()">
+      <option value="nom">Nom (A→Z)</option>
+      <option value="nom-desc">Nom (Z→A)</option>
+      <option value="pop-desc">Population (↓)</option>
+      <option value="pop-asc">Population (↑)</option>
+      <option value="density-desc">Densité (↓)</option>
+    </select>
+  </div>
+  <div class="drawer-actions">
+    <button class="drawer-btn-reset" onclick="resetMobileFilters()">↺ Réinitialiser</button>
+    <button class="drawer-btn-apply" onclick="closeDrawer()">✓ Appliquer</button>
+  </div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div class="load-overlay" id="loadOverlay">
+  <div style="font-size:32px">🗺</div>
+  <div class="load-title">Atlas Territorial · Oise (60)</div>
+  <div class="load-sub" id="loadMsg">Chargement des ressources…</div>
+  <div class="load-bar-wrap"><div class="load-bar" id="loadBar"></div></div>
+</div>
+
+<header>
+  <div class="hdr-inner">
+    <span class="hdr-badge mob-hide">Oise · 60</span>
+    <div style="flex:1;text-align:center;">
+      <div class="hdr-title">Atlas Territorial · <span>Communes de l'Oise</span></div>
+      <div class="hdr-sub mob-hide" style="color:#ffffff;">Hugo DREYER</div>
+      <div class="mob-show" style="display:none;font-size:10px;color:#ffffff;margin-top:1px;opacity:0.8;">Hugo DREYER</div>
+    </div>
+    <div class="hdr-actions">
+      <button id="enrichStatus" class="btn btn-outline btn-sm status-partial-btn" style="pointer-events:none;">● Données de base</button>
+      <button class="btn btn-outline btn-sm" onclick="openImportModal()">📂 Importer des données</button>
+      <button class="btn btn-gold btn-sm mob-hide" onclick="exportCSV()">⬇ Export CSV</button>
+      <button class="btn btn-gold btn-sm mob-hide" onclick="exportMapSVG()" title="Exporter la carte en SVG vectoriel (Illustrator)">🗺 Export SVG</button>
+      <button class="theme-btn mob-hide" id="themeToggle" title="Changer le thème">☀️</button>
+    </div>
+  </div>
+</header>
+
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item"><span class="stat-value" id="statCommunes">—</span><span class="stat-label">communes</span></div>
+    <div class="stat-div"></div>
+    <div class="stat-item"><span class="stat-value" id="statCantons">—</span><span class="stat-label">cantons</span></div>
+    <div class="stat-div"></div>
+    <div class="stat-item"><span class="stat-value" id="statPop">—</span><span class="stat-label">habitants</span></div>
+    <div class="stat-div"></div>
+    <div class="stat-item"><span class="stat-value" id="statPopMoy">—</span><span class="stat-label">hab. moyen</span></div>
+    <div class="stat-div"></div>
+    <div class="stat-item"><span class="stat-value" id="statFiltered">—</span><span class="stat-label">affichées</span></div>
+  </div>
+</div>
+
+<div class="tab-bar" id="tabBar">
+  <button class="tab-btn active" id="tabBtnTable" onclick="switchTab('table',this)">📋 Menu principal</button>
+  <button class="tab-btn" id="tabBtnCanton" onclick="switchTab('canton',this)">🗂 Synthèse par canton</button>
+  <button class="tab-btn" id="tabBtnMap" onclick="switchTab('map',this)">🗺 Carte</button>
+  <button class="tab-btn" id="tabBtnAnalyse" onclick="switchTab('analyse',this)">📊 Analyse</button>
+  <button class="tab-btn" id="tabBtnAac" onclick="switchTab('aac',this)">🏛️ Aide aux communes</button>
+  <button class="tab-btn" id="tabBtnOverlay" onclick="switchTab('overlay',this)">🔍 Superposition cartes</button>
+  <button class="tab-btn" id="tabBtnFlyer" onclick="switchTab('flyer',this)">🖨️ Générateur de Flyers</button>
+</div>
+
+<div class="app-layout" style="position:relative">
+  <!-- SIDEBAR TOGGLE -->
+  <button id="sidebarToggle" onclick="toggleSidebar()" style="position:absolute;left:240px;top:10px;z-index:161;background:var(--surface);border:1px solid var(--border);border-left:none;border-radius:0 4px 4px 0;padding:8px 4px;cursor:pointer;color:var(--txt-muted);font-weight:bold;transition:left 0.15s ease;">«</button>
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-section">
+      <div class="sb-title">Recherche</div>
+      <input type="text" id="searchInput" class="search-input" placeholder="Nom, code INSEE, code postal…" oninput="applyFilters()">
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">Filtres géographiques</div>
+      <div class="filter-group">
+        <label class="filter-label">Circonscription</label>
+        <select id="filterCirco" class="filter-select" onchange="applyFilters()">
+          <option value="">Toutes les circonscriptions</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Canton</label>
+        <select id="filterCanton" class="filter-select" onchange="applyFilters()">
+          <option value="">Tous les cantons</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">CC / CA</label>
+        <select id="filterEpci" class="filter-select" onchange="applyFilters()">
+          <option value="">Toutes les communautés</option>
+        </select>
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">Population</div>
+      <div class="filter-group">
+        <label class="filter-label">Tranche prédéfinie</label>
+        <select id="popPreset" class="filter-select" onchange="applyPopPreset()">
+          <option value="">Toutes</option>
+          <option value="0-499">Moins de 500 hab.</option>
+          <option value="500-1999">500 – 1 999 hab.</option>
+          <option value="2000-4999">2 000 – 4 999 hab.</option>
+          <option value="5000-9999">5 000 – 9 999 hab.</option>
+          <option value="10000-999999">10 000 hab. et +</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">Plage personnalisée</label>
+        <div class="range-inputs">
+          <input type="number" id="popMin" class="range-input" placeholder="Min" oninput="applyFilters()">
+          <span class="range-sep">–</span>
+          <input type="number" id="popMax" class="range-input" placeholder="Max" oninput="applyFilters()">
+        </div>
+      </div>
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">Densité</div>
+      <select id="filterDensity" class="filter-select" onchange="applyFilters()">
+        <option value="">Tous types</option>
+        <option value="urban">Urbain (>1000 hab/km²)</option>
+        <option value="periurban">Péri-urbain (150–1000)</option>
+        <option value="rural">Rural (30–150)</option>
+        <option value="very-rural">Rural isolé (<30)</option>
+      </select>
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">Tri</div>
+      <select id="sortField" class="filter-select" onchange="applyFilters()">
+        <option value="nom">Nom (A→Z)</option>
+        <option value="nom-desc">Nom (Z→A)</option>
+        <option value="pop-desc">Population (↓)</option>
+        <option value="pop-asc">Population (↑)</option>
+        <option value="surface-desc">Surface (↓)</option>
+        <option value="density-desc">Densité (↓)</option>
+      </select>
+    </div>
+    <div class="sb-section">
+      <div class="sb-title">Affichage</div>
+      <select id="pageSize" class="filter-select" onchange="applyFilters()">
+        <option value="50">50 par page</option>
+        <option value="100">100 par page</option>
+        <option value="200">200 par page</option>
+        <option value="9999">Toutes</option>
+      </select>
+    </div>
+    <button class="btn btn-outline-dark btn-full btn-sm" onclick="resetFilters()">↺ Réinitialiser filtres</button>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main-content">
+    <!-- TAB: TABLE -->
+    <div id="tabTable">
+      
+      
+      <div id="resultCount" class="result-count"></div>
+      <div id="oiseSummaryBar" style="display:none;margin-bottom:10px;
+  background:linear-gradient(90deg,rgba(212,168,67,.15),rgba(212,168,67,.04));
+  border:1.5px solid rgba(212,168,67,.35);border-radius:10px;padding:10px 16px;cursor:pointer"
+  onclick="toggleOiseSummary()">
+  <div style="display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:13px;font-weight:800;color:var(--gold)">📁 Oise — Synthèse globale</span>
+    <span id="oiseSummaryChevron" style="color:var(--gold);font-size:13px">▶ Afficher</span>
+  </div>
+  <div id="oiseSummaryContent" style="display:none;margin-top:10px"></div>
+</div>
+<div id="cantonSummary"></div>
+      <div id="mobileList"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="openColFilter('nom', this)">Commune ▾</th>
+              <th onclick="openColFilter('code', this)">Code INSEE ▾</th>
+              <th onclick="openColFilter('cp', this)">Code postal ▾</th>
+              <th onclick="openColFilter('canton', this)">Canton ▾</th>
+              <th onclick="openColFilter('circo', this)">Circo. ▾</th>
+              <th onclick="openColFilter('epci', this)">CC / CA ▾</th>
+              <th onclick="openColFilter('population', this)">Population ▾</th>
+              <th onclick="openColFilter('surface', this)">Surface ▾</th>
+              <th onclick="openColFilter('density', this)">Densité ▾</th>
+              <th>Liens</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody">
+            <tr><td colspan="10"><div class="empty-state">⏳ Chargement des communes de l'Oise…</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="paginationBar" class="pagination-bar" style="display:none">
+        <span id="pageInfo" style="font-size:11px;color:var(--txt-muted)"></span>
+        <div id="pageBtns" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- TAB: CANTONS -->
+    <div id="tabCanton" style="display:none">
+      <div id="cantonGrid" class="canton-grid"></div>
+    </div>
+
+    <!-- TAB: MAP -->
+    <div id="tabMap" style="display:none">
+      <div class="pc-map-wrap">
+        <div id="mapContainer"></div>
+        <div id="pcHoverTip" style="display:none;position:fixed;z-index:2000;pointer-events:none;background:rgba(13,35,64,.97);border:1.5px solid #D4A843;border-radius:9px;padding:9px 13px;max-width:260px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.6);line-height:1.5;"></div>
+        <div class="pc-layer-bar" id="pcLayerBar">
+          <div style="display:flex; justify-content:center; align-items:center; background:rgba(0,0,0,0.2); padding:2px; cursor:pointer;" onclick="togglePcLayerBar()" id="pcLayerToggle">
+             <span style="color:#D4A843; font-weight:bold; font-size:16px; line-height:1;">−</span>
+          </div>
+          <div id="pcLayerBarContent">
+            <div class="mlb-cat-row" id="pcCatRow">
+              <button class="mlb-cat-btn active" data-cat="pop"    onclick="setPcCat('pop')">👥 Pop.</button>
+              <button class="mlb-cat-btn"         data-cat="canton" onclick="setPcCat('canton')">🗺 Canton</button>
+              <button class="mlb-cat-btn"         data-cat="csp"    onclick="setPcCat('csp')">👔 CSP</button>
+              <button class="mlb-cat-btn"         data-cat="age"    onclick="setPcCat('age')">🎂 Âge</button>
+              <button class="mlb-cat-btn"         data-cat="log"    onclick="setPcCat('log')">🏠 Log.</button>
+              <button class="mlb-cat-btn"         data-cat="elec"   onclick="setPcCat('elec')">🗳️ Élec. dép.</button>
+              <button class="mlb-cat-btn"         data-cat="bvelec" onclick="setPcCat('bvelec')">🗳️ BV départ.</button>
+              <button class="mlb-cat-btn"         data-cat="eleclegis" onclick="setPcCat('eleclegis')">🗳️ Élec. législ.</button>
+              <button class="mlb-cat-btn"         data-cat="bveleclegis" onclick="setPcCat('bveleclegis')">🗳️ BV législ.</button>
+            </div>
+            <div class="mlb-sub-row" id="pcSubRow" style="display:none"></div>
+          </div>
+        </div>
+        <div class="pc-map-legend" id="pcMapLegend" style="display:none;"></div>
+        <div class="bv-legend" id="bvLegendPC"></div>
+      </div>
+    </div>
+
+    <!-- TAB: ANALYSE -->
+    <div id="tabAnalyse" style="display:none;">
+      <div id="analyseContent">
+        <!-- We will rebuild this section progressively -->
+      </div>
+    </div>
+
+    <!-- TAB: AIDE AUX COMMUNES -->
+    <div id="tabAac" style="display:none; padding: 20px; overflow-y: auto; height: 100%;">
+      <div id="aacContent"></div>
+    </div>
+  <div id="tabFlyer" style="display:none; padding: 20px; overflow-y: auto; height: 100%;"><div id="flyerContent"></div></div>
+    <div id="tabOverlay" style="display:none; padding:0 8px; height: 100%; flex-direction: column; color: var(--txt);">
+  <!-- SVG Patterns definitions for Option B -->
+  <svg width="0" height="0" style="position:absolute;">
+    <defs id="overlaySvgDefs">
+      <!-- Patterns will be generated dynamically -->
+    </defs>
+  </svg>
+  <div style="margin-bottom: 4px; background: var(--surface); padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);">
+    <h2 style="margin:0 0 4px 0; color:var(--gold); font-size:1.1rem;">Superposition & Comparaison de Cartes</h2>
+    <div style="display:flex; flex-wrap:wrap; gap: 15px; align-items:center;">
+      <label style="font-weight:bold;">Mode :</label>
+      <select id="overlayModeSelect" onchange="OverlayTab.switchMode()" style="padding:6px; background:var(--bg); color:var(--txt); border: 1px solid var(--border); border-radius:4px; margin-right: 20px;">
+        <option value="split">Option A : Split Map (Séparation verticale)</option>
+        <option value="overlay">Option B : Superposition Transparente (Hachures)</option>
+        <option value="bivariate">Option C : Carte Choroplèthe Bivariée</option>
+      </select>
+    </div>
+    
+    <!-- Option A Controls -->
+    <div id="overlaySplitControls" style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; margin-top:15px;">
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Couche Gauche :</label>
+        <select id="splitLeftVar" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Couche Droite :</label>
+        <select id="splitRightVar" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+    </div>
+
+    <!-- Option B Controls -->
+    <div id="overlayOpacityControls" style="display:none; flex-wrap:wrap; gap:20px; align-items:center; margin-top:15px;">
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Couche Primaire (Pleine) :</label>
+        <select id="overlayPrimVar" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Couche Secondaire (Hachures) :</label>
+        <select id="overlaySecVar" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Opacité couche secondaire (<span id="overlayOpacVal">60</span>%) :</label>
+        <input type="range" id="overlayOpacityRange" min="0" max="1" step="0.05" value="0.6" oninput="OverlayTab.updateOpacity()" style="width:100%;">
+      </div>
+    </div>
+
+    <!-- Option C Controls -->
+    <div id="overlayBivariateControls" style="display:none; flex-wrap:wrap; gap:20px; align-items:center; margin-top:15px;">
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Variable A (axe &rarr;) :</label>
+        <select id="bivVarA" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+      <div style="flex:1; min-width:200px;">
+        <label style="display:block; margin-bottom:5px;">Variable B (axe &uarr;) :</label>
+        <select id="bivVarB" class="overlay-var-select" onchange="OverlayTab.updateLayers()"></select>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex: 1; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); min-height: 400px;">
+    <div id="overlayMap" style="width: 100%; height: 100%; background: #1a1a24; z-index:1;"></div>
+    
+    <!-- Custom Draggable Splitter (Option A) -->
+    <div id="overlaySplitter" style="position: absolute; top:0; bottom:0; left:50%; width:4px; background: var(--gold); z-index: 1000; cursor: ew-resize; box-shadow: 0 0 10px rgba(0,0,0,0.8);">
+      <div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); width:24px; height:48px; background:var(--surface); border:2px solid var(--gold); border-radius:4px; display:flex; align-items:center; justify-content:center;">
+        <div style="width:2px; height:20px; background:var(--gold); margin:0 2px;"></div>
+        <div style="width:2px; height:20px; background:var(--gold); margin:0 2px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  </main>
+</div>
+
+<!-- DETAIL PANEL -->
+<div id="detailPanel" class="detail-panel">
+  <div class="detail-hdr">
+    <div style="flex:1">
+      <div id="detailName" class="detail-name"></div>
+      <div id="detailMeta" class="detail-meta"></div>
+    </div>
+    <button class="detail-close" onclick="closeDetail()">✕</button>
+  </div>
+  <div id="detailBody" class="detail-body"></div>
+</div>
+
+<!-- IMPORT MODAL -->
+<div id="importModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">📂 Importer données</div>
+    <!-- Dropzone auto-détection (drag & drop) -->
+    <div id="dropZone" class="drop-zone"
+         ondragover="event.preventDefault();this.classList.add('dragover')"
+         ondragleave="this.classList.remove('dragover')"
+         ondrop="event.preventDefault();this.classList.remove('dragover');if(event.dataTransfer.files[0])autoDetectFile(event.dataTransfer.files[0])">
+      <div class="drop-zone-icon">📁</div>
+      <div class="drop-zone-text">
+        <strong>Glissez n'importe quel fichier ici</strong><br>
+        <small>CSV ; XLSX ; ZIP</small>
+      </div>
+    </div>
+    <!-- Boutons upload HORS dropzone → fonctionnels sur mobile et desktop -->
+    <div style="display:grid;gap:6px;margin-top:10px">
+      <label for="fileInput" class="btn-pol" style="background:#d4a843;color:#ffffff;cursor:pointer;display:block;text-align:center;font-weight:700">📁 Données statistiques</label>
+      <div class="pol-import-status" id="inseeImportStatus" data-loaded=""></div>
+      <label for="polFileInput" class="btn-pol" style="cursor:pointer;display:block;text-align:center">🏛️ Mairie (.xlsx / .csv)</label>
+      <div class="pol-import-status" id="polImportStatus"></div>
+      <label for="municipalesInput" class="btn-pol" style="background:#7c3aed;cursor:pointer;display:block;text-align:center">🗳️ Listes municipales 2026 .csv</label>
+      <div class="pol-import-status" id="municipalesStatus"></div>
+      <hr style="border-color:rgba(255,255,255,.15);margin:2px 0">
+      <label for="elecT1Input" class="btn-pol" style="background:#1a5c8f;cursor:pointer;display:block;text-align:center">📊 Élections Départementales T1 2021 (.xlsx)</label>
+      <div class="pol-import-status" id="elecT1Status"></div>
+      <label for="elecT2Input" class="btn-pol" style="background:#5b3a8f;cursor:pointer;display:block;text-align:center">📊 Élections Départementales T2 2021 (.xlsx)</label>
+      <div class="pol-import-status" id="elecT2Status"></div>
+      <hr style="border-color:rgba(255,255,255,.15);margin:2px 0">
+      <label for="elec15T1Input" class="btn-pol" style="background:#1a5c8f;cursor:pointer;display:block;text-align:center">📊 Élections Départementales T1 2015 (.xlsx)</label>
+      <div class="pol-import-status" id="elec15T1Status"></div>
+      <label for="elec15T2Input" class="btn-pol" style="background:#5b3a8f;cursor:pointer;display:block;text-align:center">📊 Élections Départementales T2 2015 (.xlsx)</label>
+      <div class="pol-import-status" id="elec15T2Status"></div>
+      <hr style="border-color:rgba(255,255,255,.15);margin:2px 0">
+      <label for="legis24T1Input" class="btn-pol" style="background:#1a5c8f;cursor:pointer;display:block;text-align:center">📊 Élections Législatives T1 2024 (.xlsx)</label>
+      <div class="pol-import-status" id="legis24T1Status"></div>
+      <label for="legis24T2Input" class="btn-pol" style="background:#5b3a8f;cursor:pointer;display:block;text-align:center">📊 Élections Législatives T2 2024 (.xlsx)</label>
+      <div class="pol-import-status" id="legis24T2Status"></div>
+      <hr style="border-color:rgba(255,255,255,.15);margin:2px 0">
+      <label for="passPermisInput" class="btn-pol" style="background:#2e7d32;cursor:pointer;display:block;text-align:center">🚗 Bilan Pass<br>Permis (.csv)</label>
+      <div class="pol-import-status" id="passPermisStatus"></div>
+      <label for="passAvenirInput" class="btn-pol" style="background:#0277bd;cursor:pointer;display:block;text-align:center">🎓 Bilan Pass<br>Avenir (.csv)</label>
+      <div class="pol-import-status" id="passAvenirStatus"></div>
+      <hr style="border-color:rgba(255,255,255,.15);margin:2px 0">
+      <label for="zipInput" class="btn-pol" style="background:#2d6a4f;cursor:pointer;display:block;text-align:center">📦 ZIP — tous fichiers d'un coup</label>
+      <div class="pol-import-status" id="zipStatus"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px;justify-content:flex-end">
+      <button class="btn btn-outline-dark btn-sm" onclick="closeImportModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- PANNEAU DETAIL BV -->
+<div class="bvdp-overlay" id="bvdpOverlay" onclick="closeBVDetail()"></div>
+<div id="bvDetailPanel">
+  <div class="bvdp-hdr">
+    <div>
+      <div class="bvdp-title" id="bvdpTitle">Bureau</div>
+      <div class="bvdp-sub" id="bvdpSub">Commune</div>
+    </div>
+    <button class="bvdp-close" onclick="closeBVDetail()" title="Fermer">✕</button>
+  </div>
+  <div class="bvdp-body" id="bvdpBody"></div>
+</div>
+
+

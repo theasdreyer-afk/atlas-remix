@@ -1,0 +1,469 @@
+<script>
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SYNTHÈSE CANTONALE — agrège population, CSP et résultats élec
+   pour toutes les communes d'un canton
+   ══════════════════════════════════════════════════════════════════════════ */
+
+function _cantonCommunes(cantonCode) {
+  return allCommunes.filter(function(c){ return c.codeCanton === cantonCode; });
+}
+
+/* ── Agrégation données ─────────────────────────────────────────────────── */
+function _aggCantonAge(communes) {
+  var keys = ['0–14 ans','15–29 ans','30–44 ans','45–59 ans','60–74 ans','75 ans +'];
+  var agg = {_total:0}; keys.forEach(function(k){agg[k]=0;});
+  communes.forEach(function(c){
+    var a = (enrichedData[c.code]||{}).age;
+    if(!a) return;
+    agg._total += (a._total||0);
+    keys.forEach(function(k){ agg[k] += (a[k]||0); });
+  });
+  return agg._total > 0 ? agg : null;
+}
+
+function _aggCantonCSP(communes) {
+  var keys = ['Agriculteurs','Artisans/Comm.','Cadres','Prof. interm.','Employés','Ouvriers'];
+  var agg = {_total:0}; keys.forEach(function(k){agg[k]=0;});
+  communes.forEach(function(c){
+    var e = (enrichedData[c.code]||{}).emploi;
+    if(!e) return;
+    keys.forEach(function(k){ agg[k] += (e[k]||0); });
+  });
+  agg._total = keys.reduce(function(s,k){return s+agg[k];},0);
+  return agg._total > 0 ? agg : null;
+}
+
+function _aggCantonElec(communes, tour, is15) {
+  var src = tour === 1 ? (is15 ? window.elec15DataT1 : window.elecDataT1) : (is15 ? window.elec15DataT2 : window.elecDataT2);
+  src = src || {};
+  var agg = {ins:0, abs:0, vot:0, bla:0, nul:0, exp:0, v:{}};
+  var anyVal = false;
+  communes.forEach(function(c){
+    var d = src[c.code]; if(!d) return;
+    anyVal = true;
+    agg.ins += (d.ins||0); agg.abs += (d.abs||0);
+    agg.vot += (d.vot||0); agg.bla += (d.blancs||d.bla||0);
+    agg.nul += (d.nuls||d.nul||0);  agg.exp += (d.exp||0);
+    if(d.v) Object.keys(d.v).forEach(function(n){
+      agg.v[n] = (agg.v[n]||0) + d.v[n];
+    });
+  });
+  return (anyVal && agg.ins > 0) ? agg : null;
+}
+
+/* ── Rendu HTML ─────────────────────────────────────────────────────────── */
+
+function _renderAgeBlock(agg, cls) {
+  var keys   = ['0–14 ans','15–29 ans','30–44 ans','45–59 ans','60–74 ans','75 ans +'];
+  var colors = ['#60a5fa','#34d399','#f59e0b','#f87171','#c084fc','#fb923c'];
+  var tot    = agg._total || 1;
+  var rows = keys.map(function(k,i){
+    var v = agg[k]||0, pct = Math.round(v/tot*100);
+    return '<div class="csyn-compact-row">'
+      +'<span class="csyn-compact-dot" style="background:'+colors[i]+'"></span>'
+      +'<span class="csyn-compact-lbl">'+k+'</span>'
+      +'<div class="csyn-bar-wrap"><div class="csyn-bar-fill" style="width:'+pct+'%;background:'+colors[i]+'"></div></div>'
+      +'<span class="csyn-compact-val">'+pct+'%</span>'
+      +'<span class="csyn-compact-num">'+v.toLocaleString('fr-FR')+'</span>'
+      +'</div>';
+  }).join('');
+  return '<div class="csyn-total">'+agg._total.toLocaleString('fr-FR')+'<span> hab.</span></div>'
+    +'<div class="csyn-compact-rows">'+rows+'</div>';
+}
+
+function _renderCSPBlock(agg, cls) {
+  var keys   = ['Agriculteurs','Artisans/Comm.','Cadres','Prof. interm.','Employés','Ouvriers'];
+  var colors = ['#a3e635','#fb923c','#60a5fa','#34d399','#f87171','#c084fc'];
+  var tot    = agg._total || 1;
+  var rows = keys.map(function(k,i){
+    var v = agg[k]||0, pct = Math.round(v/tot*100);
+    return '<div class="csyn-compact-row">'
+      +'<span class="csyn-compact-dot" style="background:'+colors[i]+'"></span>'
+      +'<span class="csyn-compact-lbl">'+k+'</span>'
+      +'<div class="csyn-bar-wrap"><div class="csyn-bar-fill" style="width:'+pct+'%;background:'+colors[i]+'"></div></div>'
+      +'<span class="csyn-compact-val">'+pct+'%</span>'
+      +'<span class="csyn-compact-num">'+v.toLocaleString('fr-FR')+'</span>'
+      +'</div>';
+  }).join('');
+  return '<div class="csyn-total">'+agg._total.toLocaleString('fr-FR')+'<span> actifs</span></div>'
+    +'<div class="csyn-compact-rows">'+rows+'</div>';
+}
+
+function _renderElecBlock(agg, tour, cls) {
+  if (!agg) return '';
+  var pctPart = agg.ins > 0 ? (agg.vot/agg.ins*100).toFixed(1) : '—';
+  var pctAbs  = agg.ins > 0 ? (agg.abs/agg.ins*100).toFixed(1) : '—';
+  var lines = [
+    ['Inscrits',     agg.ins.toLocaleString('fr-FR')],
+    ['Participation',pctPart+'%'],
+    ['Abstention',   pctAbs+'%'],
+    ['Votants',      agg.vot.toLocaleString('fr-FR')],
+    ['Blancs/Nuls',  ((agg.bla||0)+(agg.nul||0)).toLocaleString('fr-FR')],
+  ];
+  var stats = lines.map(function(l){
+    return '<div class="csyn-kv-row"><span class="csyn-kv-lbl">'+l[0]+'</span><span class="csyn-kv-val">'+l[1]+'</span></div>';
+  }).join('');
+  // Top candidats
+  var sorted = Object.keys(agg.v).map(function(n){return{n:n,v:agg.v[n]};})
+    .sort(function(a,b){return b.v-a.v;}).slice(0,5);
+  var cands = sorted.map(function(c){
+    var col = (typeof NUANCE_COLORS!=='undefined'&&NUANCE_COLORS[c.n])||'#aaa';
+    var lbl = (typeof NUANCE_LABELS!=='undefined'&&NUANCE_LABELS[c.n])||c.n;
+    var pct = agg.exp>0?(c.v/agg.exp*100).toFixed(1):0;
+    return '<div class="csyn-compact-row">'
+      +'<span class="csyn-compact-dot" style="background:'+col+'"></span>'
+      +'<span class="csyn-compact-lbl">'+lbl+'</span>'
+      +'<div class="csyn-bar-wrap"><div class="csyn-bar-fill" style="width:'+pct+'%;background:'+col+'"></div></div>'
+      +'<span class="csyn-compact-val">'+pct+'%</span>'
+      +'</div>';
+  }).join('');
+  return '<div class="csyn-kv-grid">'+stats+'</div>'
+    +'<div class="csyn-compact-rows" style="margin-top:6px">'+cands+'</div>';
+}
+
+/* ── Construire et afficher le bloc PC ──────────────────────────────────── */
+function showCantonSummary(cantonCode) { window.currentCantonCode = cantonCode; var el=document.getElementById('cantonSummary'); if(!el) return; if(!cantonCode) { el.classList.remove('visible'); return; } var communes=_cantonCommunes(cantonCode); if(!communes.length) {el.classList.remove('visible'); return;} var nomCanton=communes[0].nomCanton||cantonCode; var ageAgg=_aggCantonAge(communes); var cspAgg=_aggCantonCSP(communes); var elec1=(typeof _aggCantonElec==='function')?_aggCantonElec(communes,1):null; var elec2=(typeof _aggCantonElec==='function')?_aggCantonElec(communes,2):null; var elec1_15=(typeof _aggCantonElec==='function')?_aggCantonElec(communes,1,true):null; var elec2_15=(typeof _aggCantonElec==='function')?_aggCantonElec(communes,2,true):null; var aacTot=0, ptTot=0, pAa=0, pAe=0, aacM1=0, aacM2=0; communes.forEach(function(c) { var enr = (typeof enrichedData !== 'undefined' ? enrichedData[c.code] : null) || {}; if(enr.passPermis) ptTot += (enr.passPermis.total || 0); if(enr.passAvenir) { pAa += (enr.passAvenir.acceptes || 0); pAe += (enr.passAvenir.enregistrements || 0); } if(typeof window.AAC_DATA !== 'undefined' && window.AAC_DATA.length > 0) { let nomNorm = String(c.nom).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, ''); window.AAC_DATA.forEach(r => { let bStr = String(r.beneficiaire).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z]/g, ''); if(bStr === nomNorm || bStr === 'COMMUNEDE'+nomNorm || bStr === 'COMMUNED'+nomNorm) { let raw = String(r.montant_vote).replace(/[^0-9,.-]/g, '').replace(',', '.'); let amt = parseFloat(raw) || 0; aacTot += amt; if(parseInt(r.annee) >= 2015 && parseInt(r.annee) <= 2021) aacM1 += amt; if(parseInt(r.annee) >= 2021 && parseInt(r.annee) <= 2028) aacM2 += amt; } }); } }); var noData='<div class="csyn-no-data">Importez les fichiers CSV/XLSX pour afficher.</div>'; var html='<div class="csyn-title">🗂 '+nomCanton+'<span>'+communes.length+' communes · '+communes.reduce(function(s,c){return s+(c.population||0);},0).toLocaleString('fr-FR')+' hab. (estimation)</span></div><div class="csyn-grid">'; html += '<div class="csyn-block"><div class="csyn-block-title">👤 Population par âge</div>'+(ageAgg ? _renderAgeBlock(ageAgg,'csyn') : noData)+'</div>'; html += '<div class="csyn-block"><div class="csyn-block-title">👔 Catégories socio-prof.</div>'+ (cspAgg ? _renderCSPBlock(cspAgg,'csyn') : noData)+'</div>'; html += '<div class="csyn-block"><div class="csyn-block-title">✨ Dispositifs Citoyens (Canton)</div>';if(ptTot>0 || pAa>0 || pAe>0){html += '<div class="csyn-compact-rows">';if(ptTot>0)html += '<div class="csyn-kv-row"><span style="color:var(--txt-muted);">🚗 Pass Permis (Total)</span><strong>'+ptTot+'</strong></div>';if(pAe>0)html += '<div class="csyn-kv-row"><span style="color:var(--txt-muted);">🎓 Pass Avenir (Enregistrés)</span><strong>'+pAe+'</strong></div>';if(pAa>0)html += '<div class="csyn-kv-row"><span style="color:var(--txt-muted);">🎓 Pass Avenir (Acceptés)</span><strong>'+pAa+'</strong></div>';html += '</div></div>';}else{html += noData+'</div>';}html += '<div class="csyn-block"><div class="csyn-block-title">💰 Aide aux communes (Canton)</div>';if(aacTot>0){html += '<div class="csyn-compact-rows">';if(aacM1>0)html += '<div class="csyn-kv-row"><span style="color:var(--txt-muted);">Total 2015-2021</span><strong>'+aacM1.toLocaleString('fr-FR')+' €</strong></div>';if(aacM2>0)html += '<div class="csyn-kv-row"><span style="color:var(--txt-muted);">Total 2021-2028</span><strong>'+aacM2.toLocaleString('fr-FR')+' €</strong></div>';html += '<div class="csyn-kv-row" style="margin-top:6px;border-top:1px solid rgba(255,255,255,0.1);padding-top:6px;"><span style="color:var(--txt-muted);">Total général</span><strong>'+aacTot.toLocaleString('fr-FR')+' €</strong></div>';html += '</div></div>';}else{html += noData+'</div>';} html += '<div class="csyn-block"><div class="csyn-block-title">🗳️ Éléc. Départ. 2015 — T1</div>'+(elec1_15 ? _renderElecBlock(elec1_15,1,'csyn') : noData)+'</div>'; html += '<div class="csyn-block"><div class="csyn-block-title">🗳️ Éléc. Départ. 2015 — T2</div>'+(elec2_15 ? _renderElecBlock(elec2_15,2,'csyn') : noData)+'</div>'; html += '<div class="csyn-block"><div class="csyn-block-title">🗳️ Éléc. Départ. 2021 — T1</div>'+(elec1 ? _renderElecBlock(elec1,1,'csyn') : noData)+'</div>'; html += '<div class="csyn-block"><div class="csyn-block-title">🗳️ Éléc. Départ. 2021 — T2</div>'+(elec2 ? _renderElecBlock(elec2,2,'csyn') : noData)+'</div>'; html += '</div>'; el.innerHTML=html; el.classList.add('visible'); }
+
+/* ── Bloc synthèse pour l'accordéon mobile ──────────────────────────────── */
+function _mobCantonSummaryHtml(cantonCode) { var communes = _cantonCommunes(cantonCode); if(!communes.length) return ''; return '<div class="mob-csyn">' + _renderPcCantonSynHtml(communes) + '</div>'; }
+
+</script>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   BUREAUX DE VOTE (BV) — Rendu polygones + interactions
+   Utilise window._BV_GEO_B64 (injecté par 14-bv-geojson.html, gzip+base64)
+   et window._BV_T1 / window._BV_T2 (peuplés par handleElecImport)
+   ══════════════════════════════════════════════════════════════════════════ */
+(function(){
+'use strict';
+
+/* ── Palettes couleurs ──────────────────────────────────────────────────── */
+var NC = {
+  'BC-FI':'#8B0000','BC-LFI':'#8B0000','BC-EXG':'#CC0000',
+  'BC-UG':'#E05252','BC-SOC':'#E87272','BC-DVG':'#F09292',
+  'BC-VEC':'#4CAF50','BC-ECO':'#66BB6A','BC-UGE':'#C62828',
+  'BC-ENS':'#FFEB3B','BC-REN':'#FFC107','BC-MDM':'#FFD54F',
+  'BC-UDI':'#FFE082','BC-LREM':'#FFC107','BC-REM':'#FFC107','BC-DVC':'#8FC4F0',
+  'BC-LR':'#3F85C8','BC-UCD':'#5C9BD4','BC-DVD':'#7EB4E0',
+  'BC-RN':'#1A237E','BC-EXD':'#283593','BC-PFN':'#303F9F',
+  'BC-DIV':'#9E9E9E','BC-DSV':'#BDBDBD','BC-REG':'#9575CD','BC-COM':'#9E9E9E'
+};
+var NL = {
+  'BC-FI':'La France Insoumise','BC-LFI':'La France Insoumise','BC-EXG':'Extrême gauche',
+  'BC-UG':'Union de la Gauche','BC-SOC':'Socialiste','BC-DVG':'Divers Gauche',
+  'BC-VEC':'Écologiste','BC-ECO':'Écologiste','BC-UGE':'Union Gauche-Écologie',
+  'BC-ENS':'Ensemble','BC-REN':'Renaissance','BC-MDM':'MoDem',
+  'BC-UDI':'UDI','BC-LREM':'LREM','BC-REM':'LREM','BC-DVC':'Divers Centre',
+  'BC-LR':'Les Républicains','BC-UCD':'Union Centre-Droite','BC-DVD':'Divers Droite',
+  'BC-RN':'Rassemblement National','BC-EXD':'Extrême Droite','BC-PFN':'Extrême Droite',
+  'BC-DIV':'Divers','BC-DSV':'Divers','BC-REG':'Régionaliste','BC-COM':'Candidature unique'
+};
+
+/* ── État interne ────────────────────────────────────────────────────────── */
+var _bvGeoCache = null;   /* GeoJSON décompressé, mis en cache */
+window._bvLayers = { pc: null, mob: null };
+
+/* ── Décompression _BV_GEO_B64 ──────────────────────────────────────────── */
+function _loadGeo(cb) {
+  if (_bvGeoCache) { cb(_bvGeoCache); return; }
+  var b64 = window._BV_GEO_B64;
+  if (!b64) { console.error('[BV] window._BV_GEO_B64 manquant !'); return; }
+  try {
+    var bin = atob(b64);
+    var u8  = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    var blob = new Blob([u8], { type: 'application/octet-stream' });
+    new Response(
+      blob.stream().pipeThrough(new DecompressionStream('gzip'))
+    ).text().then(function(txt) {
+      _bvGeoCache = JSON.parse(txt);
+      console.log('[BV] GeoJSON décompressé : ' + _bvGeoCache.features.length + ' features');
+      cb(_bvGeoCache);
+    }).catch(function(e) { console.error('[BV] Décompression erreur:', e); });
+  } catch(e) { console.error('[BV] Erreur atob/décompression:', e); }
+}
+
+/* ── Clé de correspondance (identique à _parseElecBV) ───────────────────── */
+function _bvKey(codeCommune, numeroBV) {
+  var n = parseInt(String(numeroBV).replace(/\D/g,'') || '0', 10);
+  return String(codeCommune).padStart(5, '0') + String(n).padStart(4, '0');
+}
+
+/* ── Couleur d'un résultat ──────────────────────────────────────────────── */
+function _bvColor(elec) {
+  if (!elec || !elec.n) return '#2a3f55';
+  return (typeof NUANCE_COLORS !== 'undefined' && NUANCE_COLORS[elec.n]) || NC[elec.n] || '#9E9E9E';
+}
+
+/* ── Style Leaflet ──────────────────────────────────────────────────────── */
+function _getBvDataStore(tourMode) {
+  if (tourMode === 'bveleclegis-winner-t1') return window.LEGIS2024T1 || {};
+  if (tourMode === 'bveleclegis-winner-t2') return window.LEGIS2024T2 || {};
+  return tourMode === 'bv-winner-t1' ? (window._BV_T1||{}) : (window._BV_T2||{});
+}
+
+function _makeStyle(feature, tourMode) {
+  var p    = feature.properties || {};
+  var key  = _bvKey(p.codeCommune, p.numeroBureauVote);
+  var data = _getBvDataStore(tourMode);
+  var elec = data[key] || null;
+  var op   = (typeof _polyOpacity !== 'undefined') ? _polyOpacity : 0.78;
+  return {
+    fillColor:   _bvColor(elec),
+    fillOpacity: elec ? op : (op * 0.3),
+    color:       '#0d2340',
+    weight:      0.7,
+    opacity:     0.6
+  };
+}
+
+/* ── Tooltip personnalisé au survol ───────────────────────────────────────── */
+function _buildBvHoverTip(props, elec) {
+  var s = '<div style="font-size:13px; font-family:sans-serif; text-align:left;">';
+  s += '<strong>' + (props.nomCommune || 'Inconnu') + '</strong><br>';
+  s += '<small>Bureau n°' + (props.numeroBureauVote || '?') + ' (' + (props.nomCirconscription || '?') + ')</small><br>';
+  
+  if (!elec || !elec.cands || elec.cands.length === 0) {
+    s += '<br><small style="color:#aaa;">Aucune donnée électorale</small>';
+    s += '</div>';
+    return s;
+  }
+  
+  var exp = elec.exp || 1;
+  s += '<br><small><strong>Participation:</strong> ' + Math.round(elec.pctPart) + '% (' + elec.vot + ' votants)</small><br><br>';
+  
+  var cands = elec.cands;
+  if (cands.length > 0) {
+    var c1 = cands[0];
+    var pct1 = Math.round(c1.vo / exp * 1000) / 10;
+    var n1 = (typeof window.NUANCE_LABELS !== 'undefined' && window.NUANCE_LABELS[c1.nu]) || NL[c1.nu] || c1.nu;
+    var col1 = (typeof window.NUANCE_COLORS !== 'undefined' && window.NUANCE_COLORS[c1.nu]) || NC[c1.nu] || '#9E9E9E';
+    s += '<span style="color:'+col1+';font-weight:bold;">1er : ' + n1 + '</span> — ' + pct1 + '%<br>';
+    s += '<small>';
+    if (c1.bi) s += c1.bi + ' • ';
+    s += Math.round(c1.vo) + ' voix';
+    
+    if (cands.length > 1) {
+      var c2 = cands[1];
+      var pct2 = Math.round(c2.vo / exp * 1000) / 10;
+      var diff12 = Math.round((pct1 - pct2) * 10) / 10;
+      s += ' (+' + diff12 + ' pts d\'avance sur le 2ème)';
+    }
+    s += '</small><br>';
+    
+    if (cands.length > 1) {
+      var n2 = (typeof window.NUANCE_LABELS !== 'undefined' && window.NUANCE_LABELS[c2.nu]) || NL[c2.nu] || c2.nu;
+      var col2 = (typeof window.NUANCE_COLORS !== 'undefined' && window.NUANCE_COLORS[c2.nu]) || NC[c2.nu] || '#9E9E9E';
+      s += '<br><span style="color:'+col2+';font-weight:bold;">2ème : ' + n2 + '</span> — ' + pct2 + '%<br>';
+      s += '<small>';
+      if (c2.bi) s += c2.bi + ' • ';
+      s += Math.round(c2.vo) + ' voix (-' + diff12 + ' pts)</small><br>';
+      
+      if (cands.length > 2) {
+        var c3 = cands[2];
+        var pct3 = Math.round(c3.vo / exp * 1000) / 10;
+        var n3 = (typeof window.NUANCE_LABELS !== 'undefined' && window.NUANCE_LABELS[c3.nu]) || NL[c3.nu] || c3.nu;
+        var col3 = (typeof window.NUANCE_COLORS !== 'undefined' && window.NUANCE_COLORS[c3.nu]) || NC[c3.nu] || '#9E9E9E';
+        var diff13 = Math.round((pct1 - pct3) * 10) / 10;
+        s += '<br><span style="color:'+col3+';font-weight:bold;">3ème : ' + n3 + '</span> — ' + pct3 + '%<br>';
+        s += '<small>';
+        if (c3.bi) s += c3.bi + ' • ';
+        s += Math.round(c3.vo) + ' voix (-' + diff13 + ' pts)</small><br>';
+      }
+    }
+  }
+  
+  s += '</div>';
+  return s;
+}
+
+/* ── Construction du layer Leaflet ──────────────────────────────────────── */
+function _buildLayer(geo, tourMode) {
+  return L.geoJSON(geo, {
+    style: function(f) { return _makeStyle(f, tourMode); },
+    onEachFeature: function(feature, lyr) {
+      var p = feature.properties || {};
+      lyr.on({
+        mouseover: function(e) {
+          lyr.setStyle({ fillOpacity:0.96, weight:1.8, color:'#D4A843' });
+          var data = _getBvDataStore(tourMode);
+          var key  = _bvKey(p.codeCommune, p.numeroBureauVote);
+          var elec = data[key] || null;
+          var tip = document.getElementById('pcHoverTip');
+          if (tip) {
+            tip.innerHTML = _buildBvHoverTip(p, elec);
+            tip.style.display = 'block';
+            tip.style.left = (e.originalEvent.clientX + 14) + 'px';
+            tip.style.top = (e.originalEvent.clientY - 10) + 'px';
+          }
+        },
+        mousemove: function(e) {
+          var tip = document.getElementById('pcHoverTip');
+          if (tip && tip.style.display !== 'none') {
+            var x = e.originalEvent.clientX + 14, y = e.originalEvent.clientY - 10;
+            if (x + tip.offsetWidth > window.innerWidth - 10) x = e.originalEvent.clientX - tip.offsetWidth - 10;
+            if (y + tip.offsetHeight > window.innerHeight - 10) y = e.originalEvent.clientY - tip.offsetHeight - 10;
+            tip.style.left = x + 'px';
+            tip.style.top = y + 'px';
+          }
+        },
+        mouseout: function() {
+          lyr.setStyle(_makeStyle(feature, tourMode));
+          var tip = document.getElementById('pcHoverTip');
+          if (tip) tip.style.display = 'none';
+        },
+        click: function() {
+          var data = _getBvDataStore(tourMode);
+          var key  = _bvKey(p.codeCommune, p.numeroBureauVote);
+          if (typeof window.openBVDetail === 'function')
+            window.openBVDetail(p, data[key]||null, tourMode);
+        }
+      });
+    }
+  });
+}
+
+/* ── Légende ────────────────────────────────────────────────────────────── */
+function _buildLegend(legId, tourMode) {
+  var el = document.getElementById(legId);
+  if (!el) return;
+  var title  = '🗳 T1 2021 — BV';
+  if (tourMode === 'bv-winner-t2') title = '🗳 T2 2021 — BV';
+  if (tourMode === 'bveleclegis-winner-t1') title = '🗳 T1 2024 — BV';
+  if (tourMode === 'bveleclegis-winner-t2') title = '🗳 T2 2024 — BV';
+  var blocs  = [
+    { col:'#8B0000', lbl:'Gauche radicale' },
+    { col:'#E05252', lbl:'Gauche' },
+    { col:'#FFC107', lbl:'Centre' },
+    { col:'#3F85C8', lbl:'Droite' },
+    { col:'#1A237E', lbl:'Extrême droite' },
+    { col:'#9E9E9E', lbl:'Divers' },
+    { col:'#2a3f55', lbl:'Sans données' }
+  ];
+  var html = '<div class="bv-legend-title">' + title + '</div>';
+  blocs.forEach(function(it) {
+    html += '<div class="bv-legend-item">'
+      + '<span class="bv-legend-dot" style="background:' + it.col + '"></span>'
+      + '<span class="bv-legend-lbl">' + it.lbl + '</span></div>';
+  });
+  el.innerHTML = html;
+  el.className = 'bv-legend visible';
+}
+function _hideLegend(legId) {
+  var el = document.getElementById(legId);
+  if (el) { el.innerHTML = ''; el.className = 'bv-legend'; }
+}
+
+/* ── API publique ────────────────────────────────────────────────────────── */
+window.bvShowPolygons = window._bvShowPolygons = function(tourMode, ctx) {
+  _loadGeo(function(geo) {
+    var isPC   = (ctx !== 'mob');
+    var mapObj = isPC ? window.mapInstance : window.mobMapObj;
+    var legId  = isPC ? 'bvLegendPC' : 'bvLegendMob';
+    var key    = isPC ? 'pc' : 'mob';
+
+    if (!mapObj) {
+      setTimeout(function(){ window.bvShowPolygons(tourMode, ctx); }, 400);
+      return;
+    }
+    /* Détruire le layer précédent avant recréation (T1→T2 ou refresh données) */
+    if (window._bvLayers[key]) { mapObj.removeLayer(window._bvLayers[key]); window._bvLayers[key] = null; }
+
+    window._bvLayers[key] = _buildLayer(geo, tourMode);
+    window._bvLayers[key].addTo(mapObj);
+    _buildLegend(legId, tourMode);
+  });
+};
+
+window.bvHidePolygons = window._bvHidePolygons = function(ctx) {
+  var isPC   = (ctx !== 'mob');
+  var mapObj = isPC ? window.mapInstance : window.mobMapObj;
+  var legId  = isPC ? 'bvLegendPC' : 'bvLegendMob';
+  var key    = isPC ? 'pc' : 'mob';
+  if (window._bvLayers[key] && mapObj) { mapObj.removeLayer(window._bvLayers[key]); window._bvLayers[key] = null; }
+  _hideLegend(legId);
+  /* Invalider le cache pour forcer une re-décompression si besoin */
+  _bvGeoCache = null;
+};
+
+/* Appelé par handleElecImport après chargement données T1/T2 */
+window._bvRefreshIfActive = function() {
+  /* Invalider cache pour recalculer les couleurs */
+  _bvGeoCache = null;
+  if (typeof pcMapMode !== 'undefined' &&
+      (pcMapMode === 'bv-winner-t1' || pcMapMode === 'bv-winner-t2' || pcMapMode.startsWith('bveleclegis')))
+    window.bvShowPolygons(pcMapMode, 'pc');
+  if (typeof mobMapMode !== 'undefined' &&
+      (mobMapMode === 'bv-winner-t1' || mobMapMode === 'bv-winner-t2' || mobMapMode.startsWith('bveleclegis')))
+    window.bvShowPolygons(mobMapMode, 'mob');
+};
+
+/* ── Panneau détail BV ───────────────────────────────────────────────────── */
+window.openBVDetail = function(props, elec, tourMode) {
+  var pan     = document.getElementById('bvDetailPanel');
+  var ov      = document.getElementById('bvdpOverlay');
+  var titleEl = document.getElementById('bvdpTitle');
+  var subEl   = document.getElementById('bvdpSub');
+  var bodyEl  = document.getElementById('bvdpBody');
+  if (!pan || !bodyEl) return;
+
+  var bvNum = parseInt(String(props.numeroBureauVote||'0').replace(/\D/g,''), 10);
+  var tour = (tourMode === 'bv-winner-t1' || tourMode === 'bveleclegis-winner-t1') ? '1er tour' : '2e tour';
+
+  if (titleEl) titleEl.textContent = 'Bureau n°' + bvNum;
+  if (subEl)   subEl.textContent   = (props.nomCommune||'') + ' · ' + (props.nomCirconscription||'') + ' · ' + tour;
+
+  if (!elec) {
+    bodyEl.innerHTML = '<div style="color:rgba(255,255,255,.5);text-align:center;padding:20px">'
+      + 'Aucune donnée.<br><small>Importez les résultats ' + tour + '.</small></div>';
+  } else {
+    var fmt = function(n){ return typeof n==='number' ? n.toLocaleString('fr-FR') : (n||'—'); };
+    var html = '<div class="bvdp-stats">'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+fmt(elec.ins)+'</div><div class="bvdp-stat-lbl">Inscrits</div></div>'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+(elec.pctPart?Number(elec.pctPart).toFixed(1):'—')+'%</div><div class="bvdp-stat-lbl">Participation</div></div>'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+(elec.pctAbs?Number(elec.pctAbs).toFixed(1):'—')+'%</div><div class="bvdp-stat-lbl">Abstention</div></div>'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+fmt(elec.vot)+'</div><div class="bvdp-stat-lbl">Votants</div></div>'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+fmt(elec.bla||0)+'</div><div class="bvdp-stat-lbl">Blancs</div></div>'
+      + '<div class="bvdp-stat"><div class="bvdp-stat-val">'+fmt(elec.exp)+'</div><div class="bvdp-stat-lbl">Exprimés</div></div>'
+      + '</div>';
+
+    var cands = elec.cands || [];
+    if (!cands.length && elec.n)
+      cands = [{nu:elec.n, bi:elec.b, vo:elec.v, pi:elec.p, pe:elec.exp>0?elec.v/elec.exp*100:0}];
+
+    html += '<div class="bvdp-cands-title">Résultats par candidat</div>';
+    cands.forEach(function(c, idx) {
+      var col      = NC[c.nu] || '#777';
+      var lbl      = NL[c.nu] || c.nu || '—';
+      var isWinner = (idx === 0);
+      var barW     = elec.exp > 0 ? Math.round(c.vo / elec.exp * 100) : 0;
+      html += '<div class="bvdp-cand' + (isWinner ? ' winner' : '') + '">'
+        + '<div class="bvdp-cand-dot" style="background:'+col+'"></div>'
+        + '<div class="bvdp-cand-info">'
+          + '<div class="bvdp-cand-name">'+(isWinner?'🥇 ':'')+(c.bi||lbl)+'</div>'
+          + '<div class="bvdp-cand-nuance">'+lbl+'</div>'
+          + '<div class="bvdp-bar-wrap"><div class="bvdp-bar" style="width:'+barW+'%;background:'+col+'"></div></div>'
+        + '</div>'
+        + '<div class="bvdp-cand-votes">'
+          + '<div class="bvdp-cand-v">'+fmt(c.vo)+'</div>'
+          + '<div class="bvdp-cand-pct">'+(c.pe!=null?Number(c.pe).toFixed(1):barW)+'% exp.</div>'
+        + '</div></div>';
+    });
+    bodyEl.innerHTML = html;
+  }
+  if (ov)  ov.classList.add('open');
+  pan.classList.add('open');
+};
+
+window.closeBVDetail = function() {
+  var pan = document.getElementById('bvDetailPanel');
+  var ov  = document.getElementById('bvdpOverlay');
+  if (pan) pan.classList.remove('open');
+  if (ov)  ov.classList.remove('open');
+};
+
+console.log('[BV] module chargé — _BV_GEO_B64 présent:', !!window._BV_GEO_B64);
+})();
+</script>
