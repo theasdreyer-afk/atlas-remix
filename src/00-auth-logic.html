@@ -35,18 +35,18 @@
   import { initializeFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js";
 
   const firebaseConfig = {
-      projectId: "stalwart-ensign-4cf5x",
-      appId: "1:361649912189:web:f0e83064fdbb9b3df47414",
-      apiKey: "AIzaSyDE3R1hYCZBmnnUnt9ArOhxD9yvkRc5CAM",
-      authDomain: "stalwart-ensign-4cf5x.firebaseapp.com",
-      firestoreDatabaseId: "ai-studio-e4937bd5-65b9-47d6-955c-73091513d499",
-      storageBucket: "stalwart-ensign-4cf5x.firebasestorage.app",
-      messagingSenderId: "361649912189"
+    apiKey: "AIzaSyAGEurHgA87Djd_TqM4V6B4fFM809CQKwk",
+    authDomain: "atlas-remix.firebaseapp.com",
+    projectId: "atlas-remix",
+    storageBucket: "atlas-remix.firebasestorage.app",
+    messagingSenderId: "153306880841",
+    appId: "1:153306880841:web:5df090d48b4971bf949898",
+    measurementId: "G-3TCWRM26ED"
   };
   
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = initializeFirestore(app, { experimentalForceLongPolling: true }, firebaseConfig.firestoreDatabaseId);
+  const db = initializeFirestore(app, { experimentalForceLongPolling: true });
 
   window.AuthLogic = {
     mode: 'login',
